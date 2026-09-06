@@ -1,104 +1,160 @@
-# OpenMusic API V2
+# OpenMusic API V3
 
-OpenMusic API V2 adalah RESTful API untuk mengelola data musik dan playlist. Versi ini merupakan pengembangan dari V1 dengan mempertahankan fitur **Album** dan **Song**, serta menambahkan **User**, **Authentication berbasis JWT**, **Playlist**, **Collaboration**, dan **Playlist Activity**.
+OpenMusic API V3 adalah RESTful API untuk mengelola **album, song, user, playlist, collaboration, dan playlist activity**. V3 mempertahankan seluruh fitur V2 dan menambahkan **upload cover album, album like dengan Redis cache, serta export playlist secara asynchronous menggunakan RabbitMQ dan email consumer**.
 
-## Fungsional
+## Fitur
 
-Fitur utama yang tersedia:
+### Album & Song
+- CRUD album.
+- CRUD song.
+- Relasi song dengan album melalui `albumId`.
+- Pencarian song berdasarkan `title` dan/atau `performer`.
+- Menampilkan detail album beserta daftar song.
+- Upload cover album dengan validasi tipe dan ukuran file.
+- Like, unlike, dan melihat jumlah like album.
 
-- Mengelola album: tambah, lihat detail, ubah, dan hapus album.
-- Mengelola lagu: tambah, lihat, ubah, dan hapus lagu.
-- Mencari lagu berdasarkan `title` dan/atau `performer`.
-- Menghubungkan lagu dengan album menggunakan `albumId`.
-- Membuat akun pengguna dengan password yang disimpan dalam bentuk hash.
-- Login dan mendapatkan `accessToken` serta `refreshToken`.
-- Memperbarui access token menggunakan refresh token.
-- Logout dan menghapus refresh token dari database.
+### User & Authentication
+- Registrasi user.
+- Password hashing menggunakan `bcrypt`.
+- Login menggunakan JWT.
+- Access token dan refresh token.
+- Refresh access token dan logout.
+- Authorization untuk endpoint yang membutuhkan autentikasi.
+
+### Playlist & Collaboration
 - Membuat, melihat, dan menghapus playlist.
-- Menambahkan dan menghapus lagu dari playlist.
-- Memberikan akses playlist kepada pengguna lain melalui collaboration.
-- Mencatat aktivitas penambahan dan penghapusan lagu pada playlist.
-- Mengontrol akses endpoint menggunakan autentikasi dan otorisasi berbasis JWT.
+- Menambahkan dan menghapus song dari playlist.
+- Akses playlist untuk owner dan collaborator.
+- Menambahkan dan menghapus collaborator.
+- Mencatat aktivitas penambahan dan penghapusan song.
+
+### Fitur Baru V3
+- Upload cover album.
+- Like dan unlike album.
+- Redis cache untuk data album dan jumlah like.
+- Export playlist ke email secara asynchronous.
+- RabbitMQ sebagai message broker.
+- `openmusic-consumer` untuk memproses export playlist dan mengirim email.
+- File `playlist.json` dikirim sebagai attachment email.
 
 ## Teknologi
 
-Project ini menggunakan:
+### API
+- Node.js
+- Hapi.js
+- PostgreSQL dan `pg`
+- `node-pg-migrate`
+- `@hapi/jwt`
+- `bcrypt`
+- `Joi`
+- `nanoid`
+- Redis
+- RabbitMQ dan `amqplib`
+- `@hapi/inert`
 
-- **Node.js** — runtime JavaScript.
-- **Hapi.js** — framework REST API.
-- **PostgreSQL** — database relasional.
-- **pg** — koneksi dan query PostgreSQL.
-- **node-pg-migrate** — database migration.
-- **@hapi/jwt** — autentikasi berbasis JSON Web Token.
-- **bcrypt** — hashing password.
-- **Joi** — validasi payload request.
-- **nanoid** — membuat ID unik.
-- **dotenv** — konfigurasi environment variable.
-- **Postman** — pengujian endpoint API.
+### Consumer
+- Node.js
+- RabbitMQ dan `amqplib`
+- PostgreSQL dan `pg`
+- Nodemailer
+- dotenv
+
+### Testing
+- Postman
 
 ## Arsitektur
 
-Project menggunakan pemisahan layer agar kode lebih modular dan mudah dipelihara:
-
 ```text
 Client
-  ↓
-Routes
-  ↓
-Handler
-  ↓
-Validator
-  ↓
-Service
-  ↓
-PostgreSQL
+  │
+  ▼
+OpenMusic API
+  │
+  ├── Routes → Handler → Validator → Service
+  │                         │
+  │                         ├── PostgreSQL
+  │                         └── Redis
+  │
+  └── Export Playlist
+          │
+          ▼
+       RabbitMQ
+          │
+          ▼
+   OpenMusic Consumer
+          │
+          ├── PostgreSQL
+          └── Nodemailer
+                  │
+                  ▼
+                Email
 ```
 
-Struktur utama:
+## Struktur Repository
 
 ```text
-OpenMusic-API-v2/
-├── migrations/
-├── src/
-│   ├── albums/
-│   ├── songs/
-│   ├── users/
-│   ├── authentications/
-│   ├── playlists/
-│   ├── collaborations/
-│   ├── tokenize/
-│   ├── exceptions/
-│   ├── service/
-│   └── utils/
-├── .env.example
-├── .gitignore
-├── package.json
-├── run-migrate.js
-└── server.js
+OpenMusic-API/
+├── OpenMusic-API/
+│   ├── migrations/
+│   ├── src/
+│   │   ├── albums/
+│   │   ├── songs/
+│   │   ├── users/
+│   │   ├── authentications/
+│   │   ├── playlists/
+│   │   ├── collaborations/
+│   │   ├── exports/
+│   │   ├── tokenize/
+│   │   ├── exceptions/
+│   │   ├── service/
+│   │   └── validator/
+│   ├── server.js
+│   ├── run-migrate.js
+│   ├── package.json
+│   ├── .env.example
+│   └── .gitignore
+│
+├── openmusic-consumer/
+│   ├── consumer.js
+│   ├── MailSender.js
+│   ├── utils/
+│   ├── package.json
+│   ├── .env.example
+│   └── .gitignore
+│
+├── OpenMusic-API-Test/
+│   ├── Open Music API V3 Test.postman_collection.json
+│   └── Open Music API Test.postman_environment.json
+│
+└── README.md
 ```
 
-## Endpoint
+## API Endpoints
 
 ### Albums
 
 | Method | Endpoint | Keterangan |
 |---|---|---|
 | POST | `/albums` | Menambahkan album |
-| GET | `/albums/{id}` | Mendapatkan detail album dan lagu di dalamnya |
+| GET | `/albums/{id}` | Detail album dan song |
 | PUT | `/albums/{id}` | Mengubah album |
 | DELETE | `/albums/{id}` | Menghapus album |
+| POST | `/albums/{id}/covers` | Upload cover album |
+| POST | `/albums/{id}/likes` | Like album *(JWT)* |
+| DELETE | `/albums/{id}/likes` | Unlike album *(JWT)* |
+| GET | `/albums/{id}/likes` | Melihat jumlah like album |
 
 ### Songs
 
 | Method | Endpoint | Keterangan |
 |---|---|---|
-| POST | `/songs` | Menambahkan lagu |
-| GET | `/songs` | Mendapatkan daftar lagu |
-| GET | `/songs/{id}` | Mendapatkan detail lagu |
-| PUT | `/songs/{id}` | Mengubah lagu |
-| DELETE | `/songs/{id}` | Menghapus lagu |
+| POST | `/songs` | Menambahkan song |
+| GET | `/songs` | Menampilkan daftar song |
+| GET | `/songs/{id}` | Menampilkan detail song |
+| PUT | `/songs/{id}` | Mengubah song |
+| DELETE | `/songs/{id}` | Menghapus song |
 
-Pencarian lagu menggunakan query parameter:
+Pencarian song:
 
 ```text
 GET /songs?title={title}
@@ -106,18 +162,13 @@ GET /songs?performer={performer}
 GET /songs?title={title}&performer={performer}
 ```
 
-### Users
+### Users & Authentication
 
 | Method | Endpoint | Keterangan |
 |---|---|---|
-| POST | `/users` | Membuat pengguna baru |
-
-### Authentication
-
-| Method | Endpoint | Keterangan |
-|---|---|---|
-| POST | `/authentications` | Login dan membuat access/refresh token |
-| PUT | `/authentications` | Memperbarui access token |
+| POST | `/users` | Registrasi user |
+| POST | `/authentications` | Login |
+| PUT | `/authentications` | Refresh access token |
 | DELETE | `/authentications` | Logout |
 
 ### Playlists
@@ -127,35 +178,53 @@ Semua endpoint playlist membutuhkan **Bearer Token**.
 | Method | Endpoint | Keterangan |
 |---|---|---|
 | POST | `/playlists` | Membuat playlist |
-| GET | `/playlists` | Mendapatkan playlist milik user |
+| GET | `/playlists` | Menampilkan playlist milik user |
 | DELETE | `/playlists/{id}` | Menghapus playlist |
-| POST | `/playlists/{id}/songs` | Menambahkan lagu ke playlist |
-| GET | `/playlists/{id}/songs` | Mendapatkan lagu dalam playlist |
-| DELETE | `/playlists/{id}/songs` | Menghapus lagu dari playlist |
-| GET | `/playlists/{id}/activities` | Melihat aktivitas playlist |
+| POST | `/playlists/{id}/songs` | Menambahkan song ke playlist |
+| GET | `/playlists/{id}/songs` | Menampilkan song dalam playlist |
+| DELETE | `/playlists/{id}/songs` | Menghapus song dari playlist |
+| GET | `/playlists/{id}/activities` | Menampilkan aktivitas playlist |
 
 ### Collaborations
 
 | Method | Endpoint | Keterangan |
 |---|---|---|
-| POST | `/collaborations` | Menambahkan collaborator ke playlist |
-| DELETE | `/collaborations` | Menghapus collaborator dari playlist |
+| POST | `/collaborations` | Menambahkan collaborator |
+| DELETE | `/collaborations` | Menghapus collaborator |
+
+### Export Playlist
+
+| Method | Endpoint | Keterangan |
+|---|---|---|
+| POST | `/export/playlists/{playlistId}` | Export playlist ke email *(JWT + owner)* |
+
+Payload:
+
+```json
+{
+  "targetEmail": "user@example.com"
+}
+```
+
+API mengirim message ke queue RabbitMQ:
+
+```text
+export:playlists
+```
 
 ## Authentication
 
-API menggunakan **JWT** untuk mengamankan endpoint yang membutuhkan autentikasi.
-
-Setelah login, gunakan access token pada header:
+Endpoint yang membutuhkan autentikasi menggunakan access token dengan format:
 
 ```http
 Authorization: Bearer <accessToken>
 ```
 
-Access token dikonfigurasi memiliki masa berlaku maksimal **30 menit**. Refresh token digunakan untuk mendapatkan access token baru tanpa login kembali.
+Access token memiliki masa berlaku **1800 detik (30 menit)**. Refresh token digunakan untuk mendapatkan access token baru.
 
 ## Database
 
-V2 menggunakan delapan tabel utama:
+V3 menggunakan tabel:
 
 ```text
 albums
@@ -166,33 +235,115 @@ playlists
 playlist_songs
 collaborations
 playlist_song_activities
+user_album_likes
 ```
 
 Relasi utama:
 
 ```text
-albums
-  │
-  └── songs
+albums ───────── songs
 
-users
+users ────────── playlists ───── playlist_songs ───── songs
+  │                   │
+  │                   └────────── playlist_song_activities
   │
-  ├── playlists
-  │      │
-  │      └── playlist_songs ── songs
-  │
-  └── collaborations ─────── playlists
+  ├── collaborations ─────────── playlists
+  └── user_album_likes ───────── albums
+```
 
-playlists
-  │
-  └── playlist_song_activities
+Tabel `albums` juga memiliki kolom:
+
+```text
+cover_url
+```
+
+## Redis Cache
+
+Redis digunakan untuk melakukan caching pada data album dan jumlah like album.
+
+Contoh cache key:
+
+```text
+album:{id}
+album-likes:{albumId}
+```
+
+TTL default:
+
+```text
+1800 detik (30 menit)
+```
+
+Ketika jumlah like diambil dari cache, response dapat menyertakan:
+
+```http
+X-Data-Source: cache
+```
+
+## RabbitMQ & OpenMusic Consumer
+
+Queue yang digunakan:
+
+```text
+export:playlists
+```
+
+Message dari API:
+
+```json
+{
+  "playlistId": "playlist-...",
+  "targetEmail": "user@example.com"
+}
+```
+
+`openmusic-consumer` menerima message dari RabbitMQ, mengambil data playlist dari PostgreSQL, membuat file `playlist.json`, kemudian mengirim file tersebut sebagai attachment email menggunakan Nodemailer.
+
+## Upload Cover Album
+
+Endpoint:
+
+```text
+POST /albums/{id}/covers
+```
+
+Gunakan:
+
+```text
+Content-Type: multipart/form-data
+Field: cover
+```
+
+Format file yang didukung:
+
+```text
+image/apng
+image/avif
+image/gif
+image/jpeg
+image/png
+image/webp
+```
+
+Ukuran maksimum payload:
+
+```text
+512 KB
+```
+
+File disimpan pada storage lokal dan dapat diakses melalui:
+
+```text
+GET /upload/{param*}
 ```
 
 ## Konfigurasi Environment
 
-Buat file `.env` berdasarkan `.env.example` dan isi konfigurasi PostgreSQL serta secret JWT.
+API dan `openmusic-consumer` menggunakan environment variable untuk menyimpan konfigurasi aplikasi dan koneksi service.
 
-Contoh variabel yang diperlukan:
+### API
+
+Konfigurasi utama meliputi:
 
 ```env
 HOST=localhost
@@ -206,88 +357,95 @@ PGPORT=5432
 
 ACCESS_TOKEN_KEY=your_access_token_secret
 REFRESH_TOKEN_KEY=your_refresh_token_secret
+
+REDIS_SERVER=localhost
+RABBITMQ_SERVER=localhost
 ```
 
-> Jangan commit file `.env` ke repository. File tersebut berisi password database dan secret key.
+Variabel tersebut digunakan untuk konfigurasi server API, PostgreSQL, JWT, Redis, dan RabbitMQ.
 
-## Instalasi dan Menjalankan Project
+### Consumer
 
-Clone repository kemudian masuk ke folder API:
+Konfigurasi `openmusic-consumer` meliputi:
 
-```bash
-git clone https://github.com/nsaifuddin/OpenMusic-API.git
-cd OpenMusic-API/OpenMusic-API
+```env
+PGUSER=postgres
+PGHOST=localhost
+PGPASSWORD=your_password
+PGDATABASE=mydb
+PGPORT=5432
+
+RABBITMQ_SERVER=localhost
+
+SMTP_HOST=your_smtp_host
+SMTP_PORT=465
+SMTP_USER=your_smtp_user
+SMTP_PASSWORD=your_smtp_password
 ```
 
-Install dependency:
+Variabel tersebut digunakan untuk koneksi PostgreSQL, RabbitMQ, dan SMTP sebagai layanan pengiriman email.
 
-```bash
-npm install
-```
+> Nilai environment dapat disesuaikan dengan infrastruktur yang digunakan oleh project.
 
-Buat dan konfigurasi `.env`, kemudian jalankan migration:
+## Komponen Project
 
-```bash
-npm run migrate
-```
+### OpenMusic API
 
-Jalankan server:
+Komponen utama yang menyediakan RESTful API dan menangani:
 
-```bash
-npm start
-```
+- Manajemen album dan song.
+- Manajemen user dan authentication.
+- Manajemen playlist dan collaboration.
+- Playlist activity.
+- Album like.
+- Upload cover album.
+- Pengiriman permintaan export playlist ke RabbitMQ.
 
-Secara default API berjalan pada:
+### OpenMusic Consumer
+
+`openmusic-consumer` merupakan service terpisah yang bertanggung jawab memproses message export playlist dari RabbitMQ. Consumer mengambil data playlist, membentuk `playlist.json`, dan mengirimkannya melalui email sebagai attachment.
+
+### Redis
+
+Redis digunakan sebagai cache untuk meningkatkan efisiensi akses data album dan jumlah like album. Cache menggunakan key seperti `album:{id}` dan `album-likes:{albumId}` dengan TTL default 1800 detik.
+
+### RabbitMQ
+
+RabbitMQ berfungsi sebagai message broker antara OpenMusic API dan `openmusic-consumer`. Queue `export:playlists` digunakan untuk proses export playlist secara asynchronous.
+
+## Database Migration
+
+Database dikelola menggunakan `node-pg-migrate`. Struktur V3 mempertahankan database dari versi sebelumnya dan menambahkan:
 
 ```text
-http://localhost:5000
+user_album_likes
+cover_url pada albums
 ```
+
+Migration mencakup tabel utama untuk album, song, user, authentication, playlist, collaboration, playlist activity, serta relasi user dengan album melalui fitur like.
 
 ## Testing
 
-Project dilengkapi dengan **Postman Collection V2** untuk menguji fitur:
+Project menyediakan Postman Collection V3 untuk pengujian fungsional dan integrasi API, meliputi:
 
-- Album dan Song.
-- Search lagu.
-- User registration.
-- Login, refresh token, dan logout.
-- Playlist.
-- Playlist song.
-- Authorization owner dan collaborator.
-- Collaboration.
-- Playlist activity.
-- Skenario request valid dan invalid.
+- Album dan Song CRUD.
+- Pencarian Song.
+- User dan Authentication.
+- Playlist dan Collaboration.
+- Playlist Activity.
+- Export Playlist.
+- Upload Cover Album.
+- Album Like dan Unlike.
+- Authorization dan invalid request.
+- Redis cache.
 
-Import file berikut ke Postman:
+Collection dan environment Postman tersedia pada:
 
 ```text
-OpenMusic-API-Test/
-├── Open Music API V2 Test.postman_collection.json
-└── OpenMusic API V2 Test.postman_environment.json
-```
-
-## Error Handling
-
-API menggunakan custom exception dan response error yang terstruktur.
-
-Contoh response gagal:
-
-```json
-{
-  "status": "fail",
-  "message": "Pesan error"
-}
-```
-
-Untuk kesalahan server yang tidak tertangani:
-
-```json
-{
-  "status": "error",
-  "message": "Terjadi kegagalan pada server kami"
-}
+OpenMusic-API-Test/Open Music API Test.postman_collection.json
+OpenMusic-API-Test/Open Music API Test.postman_environment.json
 ```
 
 ## Tujuan Project
 
-OpenMusic API V2 dibuat sebagai implementasi RESTful API untuk pengelolaan data musik dan playlist dengan pendekatan modular, database relasional, validasi request, autentikasi JWT, authorization, database migration, serta pengujian menggunakan Postman.
+OpenMusic API V3 merupakan implementasi RESTful API modular yang menggabungkan **PostgreSQL, JWT authentication, authorization, Redis caching, RabbitMQ message queue, asynchronous playlist export, file upload, dan email delivery** dalam satu project.

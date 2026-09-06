@@ -6,13 +6,20 @@ if (!process.env.ACCESS_TOKEN_KEY || !process.env.REFRESH_TOKEN_KEY) {
 }
 const Hapi = require('@hapi/hapi');
 const Jwt = require('@hapi/jwt');
+const Inert = require('@hapi/inert');
+const path = require('path');
 
 const albumsPlugin = require('./src/albums');
 const songsPlugin = require('./src/songs');
 const usersPlugin = require('./src/users');
 const authenticationsPlugin = require('./src/authentications');
 const playlistsPlugin = require('./src/playlists');
-const collaborationsPlugin = require('./src/collaborations'); 
+const collaborationsPlugin = require('./src/collaborations');
+const exportsPlugin = require('./src/exports');
+const CollaborationsService = require('./src/service/CollaborationsService');
+const UsersService = require('./src/service/UsersService');
+const SongsService = require('./src/service/SongsService');
+const PlaylistsService = require('./src/service/PlaylistsService');
 
 const ClientError = require('./src/exceptions/ClientError');
 
@@ -27,7 +34,20 @@ const init = async () => {
     },
   });
 
-  await server.register(Jwt);
+  await server.register([
+    { plugin: Jwt },
+    { plugin: Inert },
+  ]);
+
+  server.route({
+    method: 'GET',
+    path: '/upload/{param*}',
+    handler: {
+      directory: {
+        path: path.resolve(__dirname, 'src/service/storage'),
+      },
+    },
+  });
 
   server.auth.strategy('openmusic_jwt', 'jwt', {
     keys: process.env.ACCESS_TOKEN_KEY,
@@ -37,15 +57,17 @@ const init = async () => {
       sub: false,
       maxAgeSec: 1800,
     },
-    validate: (artifacts, _request, _h) => {
-      return {
-        isValid: true,
-        credentials: {
-          id: artifacts.decoded.payload.userId,
-        },
-      };
-    },
+    validate: (artifacts) => ({
+      isValid: true,
+      credentials: {
+        id: artifacts.decoded.payload.userId,
+      },
+    }),
   });
+
+  const collaborationsService = new CollaborationsService(new UsersService());
+  const songsService = new SongsService();
+  const playlistsService = new PlaylistsService(songsService, collaborationsService);
 
   await server.register([
     { plugin: albumsPlugin },
@@ -53,7 +75,13 @@ const init = async () => {
     { plugin: usersPlugin },
     { plugin: authenticationsPlugin },
     { plugin: playlistsPlugin },
-    { plugin: collaborationsPlugin }
+    { plugin: collaborationsPlugin },
+    {
+      plugin: exportsPlugin,
+      options: {
+        playlistsService,
+      },
+    },
   ]);
 
   server.ext('onPreResponse', (request, h) => {
@@ -72,13 +100,13 @@ const init = async () => {
       if (response.isBoom) {
         const newResponse = h.response({
           status: 'fail',
-          message: response.output.payload.message || response.message,
+          message: response.message,
         });
         newResponse.code(response.output.statusCode);
         return newResponse;
       }
 
-      console.error('Unhandled error, defaulting to 500:', response);
+      console.error(response);
       const newResponse = h.response({
         status: 'error',
         message: 'Terjadi kegagalan pada server kami',
