@@ -1,6 +1,3 @@
-<<<<<<< HEAD
-# OpenMusic-API
-=======
 # OpenMusic API
 
 OpenMusic API adalah RESTful API sederhana untuk mengelola data musik berupa **album** dan **lagu (song)**. API ini menyediakan fitur CRUD, pencarian lagu, serta relasi antara lagu dan album.
