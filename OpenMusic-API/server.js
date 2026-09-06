@@ -1,26 +1,22 @@
 require('dotenv').config();
+if (!process.env.ACCESS_TOKEN_KEY || !process.env.REFRESH_TOKEN_KEY) {
+  console.error('KRITIS: ACCESS_TOKEN_KEY dan/atau REFRESH_TOKEN_KEY tidak ditemukan di file .env');
+  console.error('Pastikan variabel tersebut sudah terisi dengan benar.');
+  process.exit(1);
+}
 const Hapi = require('@hapi/hapi');
+const Jwt = require('@hapi/jwt');
 
-const AlbumsService = require('./src/service/AlbumsService');
-const SongsService = require('./src/service/SongsService');
-
-const albumRoutes = require('./src/albums/routes');
-const songRoutes = require('./src/songs/routes');
-
-const AlbumsHandler = require('./src/albums/handler');
-const SongsHandler = require('./src/songs/handler');
-
-const albumsValidator = require('./src/albums/validator');
-const songsValidator = require('./src/songs/validator');
+const albumsPlugin = require('./src/albums');
+const songsPlugin = require('./src/songs');
+const usersPlugin = require('./src/users');
+const authenticationsPlugin = require('./src/authentications');
+const playlistsPlugin = require('./src/playlists');
+const collaborationsPlugin = require('./src/collaborations'); 
 
 const ClientError = require('./src/exceptions/ClientError');
 
 const init = async () => {
-  const albumsService = new AlbumsService();
-  const songsService = new SongsService();
-  const albumsHandler = new AlbumsHandler(albumsService, albumsValidator);
-  const songsHandler = new SongsHandler(songsService, songsValidator);
-
   const server = Hapi.server({
     port: process.env.PORT || 5000,
     host: process.env.HOST || 'localhost',
@@ -31,8 +27,34 @@ const init = async () => {
     },
   });
 
-  server.route(albumRoutes(albumsHandler));
-  server.route(songRoutes(songsHandler));
+  await server.register(Jwt);
+
+  server.auth.strategy('openmusic_jwt', 'jwt', {
+    keys: process.env.ACCESS_TOKEN_KEY,
+    verify: {
+      aud: false,
+      iss: false,
+      sub: false,
+      maxAgeSec: 1800,
+    },
+    validate: (artifacts, _request, _h) => {
+      return {
+        isValid: true,
+        credentials: {
+          id: artifacts.decoded.payload.userId,
+        },
+      };
+    },
+  });
+
+  await server.register([
+    { plugin: albumsPlugin },
+    { plugin: songsPlugin },
+    { plugin: usersPlugin },
+    { plugin: authenticationsPlugin },
+    { plugin: playlistsPlugin },
+    { plugin: collaborationsPlugin }
+  ]);
 
   server.ext('onPreResponse', (request, h) => {
     const { response } = request;
@@ -56,7 +78,7 @@ const init = async () => {
         return newResponse;
       }
 
-      console.error(response);
+      console.error('Unhandled error, defaulting to 500:', response);
       const newResponse = h.response({
         status: 'error',
         message: 'Terjadi kegagalan pada server kami',
@@ -67,7 +89,6 @@ const init = async () => {
 
     return h.continue;
   });
-
 
   await server.start();
   console.log(`Server berjalan pada ${server.info.uri}`);
